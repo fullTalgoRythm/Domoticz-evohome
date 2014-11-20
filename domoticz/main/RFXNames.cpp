@@ -105,6 +105,36 @@ const char *Security_Status_Desc(const unsigned char status)
 	return findTableIDSingle1 (Table, status);
 }
 
+const char *Evohome_Status_Desc(const unsigned char status)
+{
+	STR_TABLE_SINGLE	Table[] = 
+	{
+		{ sStatusEvoAuto, "Normal" },
+		{ sStatusEvoAutoWithEco, "Economy" },
+		{ sStatusEvoAway, "Away" },
+		{ sStatusEvoDayOff, "Day Off" },
+		{ sStatusEvoCustom, "Custom" },
+		{ sStatusEvoHeatingOff, "Heating Off" },
+		{ 0, NULL }
+	};
+	return findTableIDSingle1 (Table, status);
+}
+
+const char *Evohome_ClientStatus_Desc(const unsigned char status) //These are status as used by evohome web client
+{
+	STR_TABLE_SINGLE	Table[] = 
+	{
+		{ sStatusEvoAuto, "Auto" },
+		{ sStatusEvoAutoWithEco, "AutoWithEco" },
+		{ sStatusEvoAway, "Away" },
+		{ sStatusEvoDayOff, "DayOff" },
+		{ sStatusEvoCustom, "Custom" },
+		{ sStatusEvoHeatingOff, "HeatingOff" },
+		{ 0, NULL }
+	};
+	return findTableIDSingle1 (Table, status);
+}
+
 const char *Timer_Type_Desc(int tType)
 {
 	STR_TABLE_SINGLE	Table[] = 
@@ -172,6 +202,7 @@ const char *Hardware_Type_Desc(int hType)
 		{ HTYPE_TOONTHERMOSTAT, "Toon Thermostat" },
 		{ HTYPE_ECODEVICES, "Eco Devices via LAN interface" },
 		{ HTYPE_HARMONY_HUB, "Logitech Harmony Hub" },
+		{ HTYPE_EVOHOME, "evohome" },
 		{ 0, NULL, NULL }
 	};
 	return findTableIDSingle1 (Table, hType);
@@ -238,6 +269,7 @@ const char *Notification_Type_Desc(const int nType, const unsigned char snum)
 		{ NTYPE_PERCENTAGE, "Percentage", "P" },
 		{ NTYPE_RPM, "RPM", "Z" },
 		{ NTYPE_DEWPOINT, "Dew Point", "D" },
+		{ NTYPE_SETPOINT, "Set Point", "N" },
 		
 		{  0,NULL,NULL }
 	};
@@ -270,6 +302,7 @@ const char *Notification_Type_Label(const int nType)
 		{ NTYPE_PERCENTAGE, "%%" },
 		{ NTYPE_DEWPOINT, "degrees" },
 		{ NTYPE_RPM, "RPM" },
+		{ NTYPE_SETPOINT, "degrees" },
 		{  0,NULL,NULL }
 	};
 	return findTableIDSingle1 (Table, nType);
@@ -362,6 +395,9 @@ const char *RFX_Type_Desc(const unsigned char i, const unsigned char snum)
 		{ pTypeBBQ, "BBQ Meter", "bbq" },
 		{ pTypePOWER, "Current/Energy" , "current" },
 		{ pTypeRFY, "RFY" , "blinds" },
+		{ pTypeEvohome, "Heating" , "evohome" },
+		{ pTypeEvohomeZone, "Heating" , "evohome" },
+		{ pTypeEvohomeWater, "Heating" , "evohome" },
 		{  0,NULL,NULL }
 	};
 	if (snum==1)
@@ -569,6 +605,9 @@ const char *RFX_Type_SubType_Desc(const unsigned char dType, const unsigned char
 		{ pTypeRFY, sTypeRFY, "RFY" },
 		{ pTypeRFY, sTypeRFYext, "RFY-Ext" },
 
+		{ pTypeEvohome, sTypeEvohome, "evohome" },
+		{ pTypeEvohomeZone, sTypeEvohomeZone, "Zone" },
+		{ pTypeEvohomeWater, sTypeEvohomeWater, "Hot Water" },
 
 		{  0,0,NULL }
 	};
@@ -772,6 +811,10 @@ const char *RFX_Type_SubType_Values(const unsigned char dType, const unsigned ch
 
 		{ pTypeRFY, sTypeRFY, "Status" },
 		{ pTypeRFY, sTypeRFYext, "Status" },
+		
+		{ pTypeEvohome, sTypeEvohome, "Status" },
+		{ pTypeEvohomeZone, sTypeEvohomeZone, "Temperature,Set point" },
+		{ pTypeEvohomeWater, sTypeEvohomeWater, "Temperature,Set point,Status" },
 
 		{  0,0,NULL }
 	};
@@ -1342,6 +1385,31 @@ void GetLightStatus(
 			lstatus="Stop";
 			break;
 		}
+		break;
+	case pTypeEvohome:
+		llevel=0;
+		/*switch (nValue)
+		{
+		case sStatusEvoAuto:
+			lstatus="Normal";
+			break;
+		case sStatusEvoAutoWithEco:
+			lstatus="Economy";
+			break;
+		case sStatusEvoAway:
+			lstatus="Away";
+			break;
+		case sStatusEvoDayOff:
+			lstatus="Day Off";
+			break;
+		case sStatusEvoCustom:
+			lstatus="Custom";
+			break;
+		case sStatusEvoHeatingOff:
+			lstatus="Heating Off";
+			break;
+		}*/
+		lstatus=Evohome_ClientStatus_Desc(nValue);
 		break;
 	}
 }

@@ -534,6 +534,27 @@ SDK version 4.9
 #define sStatusMotionTamper 0x84
 #define sStatusNoMotionTamper 0x85
 
+//types for evohome
+#define pTypeEvohome 0x45 
+#define sTypeEvohome 0x00 //Controller
+
+#define pTypeEvohomeZone 0x46 //Seems easier to define a new type here
+#define sTypeEvohomeZone 0x00 //Actual temp zone
+
+#define pTypeEvohomeWater 0x47 //Seems easier to define a new type here
+#define sTypeEvohomeWater 0x00 //Hot water (Ideally this would just be a zone but for whatever reason evohome treats this differently)
+
+//#define sTypeEvohomeOutside 0x30 //If connected
+//#define sTypeEvohomeStatus 0x40 //Not sure if we can do this in 1 sensor would be for things like zone valve status, boiler relay status (maybe OT values too) and comms errors (maybe seperature sensor or switch for each is easiest)
+
+//Basic evohome controller modes
+#define sStatusEvoAuto 0x00
+#define sStatusEvoAutoWithEco 0x01
+#define sStatusEvoAway 0x02
+#define sStatusEvoDayOff 0x03
+#define sStatusEvoCustom 0x04
+#define sStatusEvoHeatingOff 0x05
+
 //types for Camera
 #define pTypeCamera 0x28
 #define sTypeNinja 0x0		//X10 Ninja/Robocam
@@ -1101,6 +1122,17 @@ typedef union tRBUF {
 		BYTE	rssi : 4;
 #endif
 	} SECURITY1;
+	
+	struct {
+		BYTE	packetlength;
+		BYTE	packettype;
+		BYTE	subtype;
+		BYTE	seqnbr;
+		BYTE	id1;
+		BYTE	id2;
+		BYTE	status;
+		BYTE	action;
+	} EVOHOME1;
 
 	struct {
 		BYTE	packetlength;

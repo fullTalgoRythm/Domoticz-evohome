@@ -52,6 +52,7 @@
 #include "../hardware/ToonThermostat.h"
 #include "../hardware/HarmonyHub.h"
 #include "../hardware/EcoDevices.h"
+#include "../hardware/evohome.h"
 #ifdef WITH_GPIO
 	#include "../hardware/Gpio.h"
 	#include "../hardware/GpioPin.h"
@@ -544,6 +545,9 @@ bool MainWorker::AddHardwareFromParams(
 		break;
 	case HTYPE_Dummy:
 		pHardware = new CDummy(ID);
+		break;
+	case HTYPE_EVOHOME:
+		pHardware = new CEvohome(ID);
 		break;
 	case HTYPE_PiFace:
 		pHardware = new CPiFace(ID);
@@ -1310,6 +1314,9 @@ void MainWorker::DecodeRXMessage(const CDomoticzHardwareBase *pHardware, const u
 			break;
 		case pTypeSecurity1:
 			DeviceRowIdx=decode_Security1(pHardware, HwdID, (tRBUF *)pRXCommand);
+			break;
+		case pTypeEvohome:
+			DeviceRowIdx=decode_evohome1(pHardware, HwdID, (tRBUF *)pRXCommand);
 			break;
 		case pTypeCamera:
 			DeviceRowIdx=decode_Camera1(pHardware, HwdID, (tRBUF *)pRXCommand);
@@ -4615,6 +4622,73 @@ unsigned long long MainWorker::decode_RFY(const CDomoticzHardwareBase *pHardware
 			break;
 		}
 		sprintf(szTmp,"Signal level  = %d", pResponse->RFY.rssi);
+		WriteMessage(szTmp);
+		WriteMessageEnd();
+	}
+	return DevRowIdx;
+}
+
+unsigned long long MainWorker::decode_evohome1(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse)
+{
+	char szTmp[100];
+	unsigned char devType=pTypeEvohome;
+	unsigned char subType=pResponse->EVOHOME1.subtype;
+	std::string ID;
+	sprintf(szTmp, "%02X%02X", pResponse->EVOHOME1.id1, pResponse->EVOHOME1.id2);
+	ID=szTmp;
+	unsigned char Unit=0;
+	unsigned char cmnd=pResponse->EVOHOME1.status;
+	unsigned char SignalLevel=255;//Unknown
+	unsigned char BatteryLevel = 255;//Unknown
+
+	unsigned long long DevRowIdx=m_sql.UpdateValue(HwdID, ID.c_str(),Unit,devType,subType,SignalLevel,BatteryLevel,cmnd,m_LastDeviceName,pResponse->EVOHOME1.action);
+	if (DevRowIdx == -1)//Is this failure??
+		return -1;
+	CheckSceneCode(HwdID, ID.c_str(),Unit,devType,subType,cmnd,"");//?
+
+	if (m_verboselevel == EVBL_ALL)
+	{
+		WriteMessageStart();
+		switch (pResponse->EVOHOME1.subtype)
+		{
+		case sTypeEvohome:
+			WriteMessage("subtype       = Evohome");
+			break;
+		default:
+			sprintf(szTmp,"ERROR: Unknown Sub type for Packet type= %02X:%02X", pResponse->EVOHOME1.packettype, pResponse->EVOHOME1.subtype);
+			WriteMessage(szTmp);
+			break;
+		}
+
+		sprintf(szTmp, "Sequence nbr  = %d", pResponse->EVOHOME1.seqnbr);
+		WriteMessage(szTmp);
+		sprintf(szTmp, "id         = %02X:%02X", pResponse->EVOHOME1.id1, pResponse->EVOHOME1.id2);
+		WriteMessage(szTmp);
+
+		WriteMessage("status        = ", false);
+		
+		switch (pResponse->EVOHOME1.status)
+		{
+		case sStatusEvoAuto:
+			WriteMessage("Normal");
+			break;
+		case sStatusEvoAutoWithEco:
+			WriteMessage("Economy");
+			break;
+		case sStatusEvoAway:
+			WriteMessage("Away");
+			break;
+		case sStatusEvoDayOff:
+			WriteMessage("Day Off");
+			break;
+		case sStatusEvoCustom:
+			WriteMessage("Custom");
+			break;
+		case sStatusEvoHeatingOff:
+			WriteMessage("Heating Off");
+			break;
+		}
+
 		WriteMessage(szTmp);
 		WriteMessageEnd();
 	}
@@ -8551,6 +8625,96 @@ bool MainWorker::SwitchLightInt(const std::vector<std::string> &sd, std::string 
 	return false;
 }
 
+bool MainWorker::SwitchModal(const std::string &idx, const std::string &status, const std::string &action, const std::string &ooc)
+{
+	unsigned long long ID;
+	std::stringstream s_str(idx);
+	s_str >> ID;
+	
+   /* 	std::stringstream szQuery;
+	sprintf(szTmp,
+	"UPDATE DeviceStatus SET nValue=%d, sValue='%s', LastUpdate='%04d-%02d-%02d %02d:%02d:%02d' WHERE (ID == '%s')",
+	newnValue,
+	"",
+	ltime.tm_year+1900,ltime.tm_mon+1, ltime.tm_mday, ltime.tm_hour, ltime.tm_min, ltime.tm_sec,
+	sd[0].c_str()
+	);
+	query(szTmp);
+	szQuery << "SELECT HardwareID,DeviceID,Unit,Type,SubType,SwitchType,AddjValue2 FROM DeviceStatus WHERE (ID == " << idx << ")";
+	result=m_sql.query(szQuery.str());*/
+   
+   	//Get Device details
+	std::vector<std::vector<std::string> > result;
+	std::stringstream szQuery;
+	szQuery << "SELECT HardwareID, DeviceID,Unit,Type,SubType,SwitchType,StrParam1,nValue FROM DeviceStatus WHERE (ID == " << idx << ")";
+	result=m_sql.query(szQuery.str());
+	if (result.size()<1)
+		return false;
+	std::vector<std::string> sd=result[0];	
+	
+	int nStatus=0;
+	if(status=="Away")
+		nStatus=sStatusEvoAway;
+	else if(status=="AutoWithEco")
+		nStatus=sStatusEvoAutoWithEco;
+	else if(status=="DayOff")
+		nStatus=sStatusEvoDayOff;
+	else if(status=="Custom")
+		nStatus=sStatusEvoCustom;
+	else if(status=="Auto")
+		nStatus=sStatusEvoAuto;
+	else if(status=="HeatingOff")
+		nStatus=sStatusEvoHeatingOff;
+
+	int nValue=atoi(sd[7].c_str());
+	if(ooc=="1" && nValue==nStatus)
+		return false;//FIXME not an error ... status = (already set)
+	
+	int HardwareID = atoi(sd[0].c_str());
+	int hindex=FindDomoticzHardware(HardwareID);
+	if (hindex==-1)
+		return false;
+
+	unsigned char Unit=atoi(sd[2].c_str());
+	unsigned char dType=atoi(sd[3].c_str());
+	unsigned char dSubType=atoi(sd[4].c_str());
+	_eSwitchType switchtype=(_eSwitchType)atoi(sd[5].c_str());
+
+	CDomoticzHardwareBase *pHardware=GetHardware(HardwareID);
+	if (pHardware==NULL)
+		return false;
+
+	//Update Domoticz Security Device
+	RBUF tsen;
+	memset(&tsen,0,sizeof(RBUF));
+	tsen.EVOHOME1.packetlength=sizeof(tsen.EVOHOME1)-1;//why
+	tsen.EVOHOME1.packettype=pTypeEvohome;
+	tsen.EVOHOME1.subtype=sTypeEvohome;
+	tsen.EVOHOME1.id1=0x00; //gateways
+	tsen.EVOHOME1.id2=0x00; //temperature control systems
+	tsen.EVOHOME1.seqnbr=1; //not sure? probably N/A
+	tsen.EVOHOME1.action=(action=="1")?1:0;
+	tsen.EVOHOME1.status=nStatus;
+
+	// convert now to string form
+	time_t now = time(0);
+	char *szDate = asctime(localtime(&now));
+	szDate[strlen(szDate)-1]=0;
+
+	WriteMessageStart();
+
+	std::stringstream sTmp;
+	sTmp << szDate << " (System) evohome status = "<< status << " (" << nStatus << ") action = " << action << " (" << bool(tsen.EVOHOME1.action) << ")";
+	WriteMessage(sTmp.str().c_str(),false);
+	
+	unsigned long long DeviceRowIdx=decode_evohome1(pHardware, HardwareID, (const tRBUF*)&tsen.EVOHOME1);
+	WriteMessageEnd();
+	if(DeviceRowIdx==-1)
+		return false;//FIXME is this the error code?
+	m_sharedserver.SendToAll(DeviceRowIdx,(const char*)&tsen,tsen.EVOHOME1.packetlength+1,NULL);
+	return true;//FIXME detect error from SQL update
+}
+
 bool MainWorker::SwitchLight(const std::string &idx, const std::string &switchcmd, const std::string &level, const std::string &hue)
 {
 	unsigned long long ID;
@@ -8586,6 +8750,81 @@ bool MainWorker::SwitchLight(unsigned long long idx, const std::string &switchcm
 		return SwitchLightInt(sd,switchcmd,level,hue,false);
 }
 
+bool MainWorker::SetSetPoint(const std::string &idx, const float TempValue, const int newMode, const std::string &until)
+{
+	//Get Device details
+	std::vector<std::vector<std::string> > result;
+	std::stringstream szQuery;
+	szQuery << "SELECT HardwareID, DeviceID,Unit,Type,SubType,SwitchType,StrParam1 FROM DeviceStatus WHERE (ID == " << idx << ")";
+	result=m_sql.query(szQuery.str());
+	if (result.size()<1)
+		return false;
+
+	std::vector<std::string> sd=result[0];
+	int HardwareID = atoi(sd[0].c_str());
+	int hindex=FindDomoticzHardware(HardwareID);
+	if (hindex==-1)
+		return false;
+	
+	unsigned long ID;
+	std::stringstream s_strid;
+	s_strid << std::hex << sd[1];
+	s_strid >> ID;
+
+	unsigned char Unit=atoi(sd[2].c_str());
+	unsigned char dType=atoi(sd[3].c_str());
+	unsigned char dSubType=atoi(sd[4].c_str());
+	_eSwitchType switchtype=(_eSwitchType)atoi(sd[5].c_str());
+
+	CDomoticzHardwareBase *pHardware=GetHardware(HardwareID);
+	if (pHardware==NULL)
+		return false;
+
+	if (pHardware->HwdType == HTYPE_EVOHOME)
+	{
+		//FIXME disable when we change from evohome web client to actual hardware device
+	
+		std::string OnAction(sd[6]);
+		_log.Log(LOG_STATUS,OnAction.c_str());
+		if (OnAction.find("script://")!=std::string::npos)
+		{
+			s_strid.clear();
+			s_strid.str("");
+			s_strid << ID;
+			boost::replace_all(OnAction, "{deviceid}", s_strid.str());
+			s_strid.clear();
+			s_strid.str("");
+			s_strid << newMode;
+			boost::replace_all(OnAction, "{mode}", s_strid.str());
+			s_strid.clear();
+			s_strid.str("");
+			s_strid << TempValue;
+			boost::replace_all(OnAction, "{setpoint}", s_strid.str());
+			s_strid.clear();
+			s_strid.str("");
+			s_strid << (int)TempValue;
+			boost::replace_all(OnAction, "{state}", s_strid.str());
+			boost::replace_all(OnAction, "{until}", until);
+			//Execute possible script
+			std::string scriptname=OnAction.substr(9);
+			std::string scriptparams="";
+			//Add parameters
+			int pindex=scriptname.find(' ');
+			if (pindex!=std::string::npos)
+			{
+				scriptparams=scriptname.substr(pindex+1);
+				scriptname=scriptname.substr(0,pindex);
+			}
+			
+			if (file_exist(scriptname.c_str()))
+			{
+				m_sql.AddTaskItem(_tTaskItem::ExecuteScript(1,scriptname,scriptparams));
+			}
+		}
+	}
+	return true;
+}
+
 bool MainWorker::SetSetPointInt(const std::vector<std::string> &sd, const float TempValue)
 {
 	int HardwareID = atoi(sd[0].c_str());
@@ -8614,7 +8853,8 @@ bool MainWorker::SetSetPointInt(const std::vector<std::string> &sd, const float 
 		(pHardware->HwdType==HTYPE_OpenThermGateway)||
 		(pHardware->HwdType==HTYPE_OpenThermGatewayTCP)||
 		(pHardware->HwdType == HTYPE_ICYTHERMOSTAT)||
-		(pHardware->HwdType == HTYPE_TOONTHERMOSTAT)
+		(pHardware->HwdType == HTYPE_TOONTHERMOSTAT)||
+		(pHardware->HwdType == HTYPE_EVOHOME)
 		)
 	{
 		if (pHardware->HwdType==HTYPE_OpenThermGateway)
@@ -8637,6 +8877,42 @@ bool MainWorker::SetSetPointInt(const std::vector<std::string> &sd, const float 
 			CToonThermostat *pGateway = (CToonThermostat*)pHardware;
 			pGateway->SetSetpoint(ID4, TempValue);
 		}
+		else if (pHardware->HwdType == HTYPE_EVOHOME)
+		{
+			//FIXME disable when we change from evohome web client to actual hardware device
+			//FIXME support for override until date / time parameters...implemented above see bool MainWorker::SetSetPoint(const std::string &idx, const float TempValue, const int newMode, const std::string &until)
+		
+			std::string OnAction(sd[6]);
+			_log.Log(LOG_STATUS,OnAction.c_str());
+			if (OnAction.find("script://")!=std::string::npos)
+			{
+				s_strid.clear();
+				s_strid.str("");
+				s_strid << ID;
+				boost::replace_all(OnAction, "{deviceid}", s_strid.str());
+				boost::replace_all(OnAction, "{mode}", "PermanentOverride");
+				s_strid.clear();
+				s_strid.str("");
+				s_strid << TempValue;
+				boost::replace_all(OnAction, "{setpoint}", s_strid.str());
+				//Execute possible script
+				std::string scriptname=OnAction.substr(9);
+				std::string scriptparams="";
+				//Add parameters
+				int pindex=scriptname.find(' ');
+				if (pindex!=std::string::npos)
+				{
+					scriptparams=scriptname.substr(pindex+1);
+					scriptname=scriptname.substr(0,pindex);
+				}
+				
+				
+				if (file_exist(scriptname.c_str()))
+				{
+					m_sql.AddTaskItem(_tTaskItem::ExecuteScript(1,scriptname,scriptparams));
+				}
+			}
+		}
 	}
 	else
 	{
@@ -8658,7 +8934,7 @@ bool MainWorker::SetSetPoint(const std::string &idx, const float TempValue)
 	//Get Device details
 	std::vector<std::vector<std::string> > result;
 	std::stringstream szQuery;
-	szQuery << "SELECT HardwareID, DeviceID,Unit,Type,SubType,SwitchType FROM DeviceStatus WHERE (ID == " << idx << ")";
+	szQuery << "SELECT HardwareID, DeviceID,Unit,Type,SubType,SwitchType,StrParam1 FROM DeviceStatus WHERE (ID == " << idx << ")";
 	result=m_sql.query(szQuery.str());
 	if (result.size()<1)
 		return false;
@@ -9061,7 +9337,7 @@ void MainWorker::HeartbeatCheck()
 	{
 		CDomoticzHardwareBase *pHardware = (CDomoticzHardwareBase *)(*itt);
 		//Skip Dummy Hardware
-		bool bDoCheck = (pHardware->HwdType != HTYPE_Dummy) && (pHardware->HwdType != HTYPE_Domoticz);
+		bool bDoCheck = (pHardware->HwdType != HTYPE_Dummy) && (pHardware->HwdType != HTYPE_Domoticz)  && (pHardware->HwdType != HTYPE_EVOHOME);
 		if (bDoCheck)
 		{
 			//Check Thread Timeout

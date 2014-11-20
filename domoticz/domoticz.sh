@@ -19,7 +19,7 @@ DAEMON=/home/$USERNAME/domoticz/$NAME
 #DAEMON_ARGS="-daemon -www 8080 -log /tmp/domoticz.txt"
 #DAEMON_ARGS="-daemon -www 8080 -syslog"
 DAEMON_ARGS="-daemon -www 8080"
-PIDFILE=/var/run/$NAME.pid
+PIDFILE=/var/run/domoticz/$NAME.pid
 SCRIPTNAME=/etc/init.d/$NAME
 
 # Exit if the package is not installed
@@ -44,7 +44,7 @@ do_start()
         #   2 if daemon could not be started
         start-stop-daemon --chuid $USERNAME --start --quiet --pidfile $PIDFILE --exec $DAEMON --test > /dev/null \
                 || return 1
-        start-stop-daemon --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
+        start-stop-daemon --chuid $USERNAME --start --quiet --pidfile $PIDFILE --exec $DAEMON -- \
                 $DAEMON_ARGS \
                 || return 2
 }

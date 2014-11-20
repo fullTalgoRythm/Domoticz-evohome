@@ -21,7 +21,7 @@
 #include "service/Log.h"
 
 #define DAEMON_NAME "telldusd"
-#define PID_FILE "/var/run/" DAEMON_NAME ".pid"
+#define PID_FILE "/var/run/domoticz/" DAEMON_NAME ".pid"
 
 TelldusMain tm;
 

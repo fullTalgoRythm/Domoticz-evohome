@@ -53,10 +53,13 @@ public:
 	bool DoesDeviceActiveAScene(const int HwdId, const std::string &idx, const int unit, const int devType, const int subType);
 
 	bool SetSetPoint(const std::string &idx, const float TempValue);
+	bool SetSetPoint(const std::string &idx, const float TempValue, const int newMode, const std::string &until);
 	bool SetThermostatState(const std::string &idx, const int newState);
 	bool SetSetPointInt(const std::vector<std::string> &sd, const float TempValue);
 
 	bool SetRFXCOMHardwaremodes(const int HardwareID, const unsigned char Mode1,const unsigned char Mode2,const unsigned char Mode3,const unsigned char Mode4,const unsigned char Mode5);
+	
+	bool SwitchModal(const std::string &idx, const std::string &status, const std::string &action, const std::string &ooc);
 
 	bool GetSunSettings();
 	void LoadSharedUsers();
@@ -207,6 +210,7 @@ private:
 	unsigned long long decode_BBQ(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
 	unsigned long long decode_Power(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
 	unsigned long long decode_LimitlessLights(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
+	unsigned long long decode_evohome1(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
 };
 
 extern MainWorker m_mainworker;

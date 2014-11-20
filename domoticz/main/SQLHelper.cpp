@@ -23,7 +23,7 @@
 	#include <pwd.h>
 #endif
 
-#define DB_VERSION 51
+#define DB_VERSION 52 //Add support for evohome setpoint to logging
 
 const char *sqlCreateDeviceStatus =
 "CREATE TABLE IF NOT EXISTS [DeviceStatus] ("
@@ -113,6 +113,7 @@ const char *sqlCreateTemperature =
 "[Humidity] INTEGER DEFAULT 0, "
 "[Barometer] INTEGER DEFAULT 0, "
 "[DewPoint] FLOAT DEFAULT 0, "
+"[SetPoint] FLOAT DEFAULT 0, "
 "[Date] DATETIME DEFAULT (datetime('now','localtime')));";
 
 const char *sqlCreateTemperature_Calendar =
@@ -126,6 +127,9 @@ const char *sqlCreateTemperature_Calendar =
 "[Humidity] INTEGER DEFAULT 0, "
 "[Barometer] INTEGER DEFAULT 0, "
 "[DewPoint] FLOAT DEFAULT 0, "
+"[SetPoint_Min] FLOAT DEFAULT 0, "
+"[SetPoint_Max] FLOAT DEFAULT 0, "
+"[SetPoint_Avg] FLOAT DEFAULT 0, "
 "[Date] DATE NOT NULL);";
 
 const char *sqlCreateTempVars =
@@ -991,6 +995,13 @@ bool CSQLHelper::OpenDatabase()
 			query("ALTER TABLE MultiMeter_Calendar ADD COLUMN [Counter3] BIGINT default 0");
 			query("ALTER TABLE MultiMeter_Calendar ADD COLUMN [Counter4] BIGINT default 0");
 		}
+		if (dbversion < 52)
+		{
+			query("ALTER TABLE Temperature ADD COLUMN [SetPoint] FLOAT default 0");
+			query("ALTER TABLE Temperature_Calendar ADD COLUMN [SetPoint_Min] FLOAT default 0");
+			query("ALTER TABLE Temperature_Calendar ADD COLUMN [SetPoint_Max] FLOAT default 0");
+			query("ALTER TABLE Temperature_Calendar ADD COLUMN [SetPoint_Avg] FLOAT default 0");
+		}
 	}
 	else if (bNewInstall)
 	{
@@ -1569,12 +1580,12 @@ std::vector<std::vector<std::string> > CSQLHelper::query(const std::string &szQu
 
 unsigned long long CSQLHelper::UpdateValue(const int HardwareID, const char* ID, const unsigned char unit, const unsigned char devType, const unsigned char subType, const unsigned char signallevel, const unsigned char batterylevel, const int nValue, std::string &devname, const bool bUseOnOffAction)
 {
-	return UpdateValue(HardwareID, ID, unit, devType, subType, signallevel, batterylevel, nValue, "", devname);
+	return UpdateValue(HardwareID, ID, unit, devType, subType, signallevel, batterylevel, nValue, "", devname,bUseOnOffAction);
 }
 
 unsigned long long CSQLHelper::UpdateValue(const int HardwareID, const char* ID, const unsigned char unit, const unsigned char devType, const unsigned char subType, const unsigned char signallevel, const unsigned char batterylevel, const char* sValue, std::string &devname, const bool bUseOnOffAction)
 {
-	return UpdateValue(HardwareID, ID, unit, devType, subType, signallevel, batterylevel, 0, sValue,devname);
+	return UpdateValue(HardwareID, ID, unit, devType, subType, signallevel, batterylevel, 0, sValue,devname,bUseOnOffAction);
 }
 
 unsigned long long CSQLHelper::UpdateValue(const int HardwareID, const char* ID, const unsigned char unit, const unsigned char devType, const unsigned char subType, const unsigned char signallevel, const unsigned char batterylevel, const int nValue, const char* sValue, std::string &devname, const bool bUseOnOffAction)
@@ -1857,6 +1868,7 @@ unsigned long long CSQLHelper::UpdateValueInt(const int HardwareID, const char* 
 	case pTypeLighting6:
 	case pTypeLimitlessLights:
 	case pTypeSecurity1:
+	case pTypeEvohome:
 	case pTypeCurtain:
 	case pTypeBlinds:
 	case pTypeRFY:
@@ -1909,7 +1921,14 @@ unsigned long long CSQLHelper::UpdateValueInt(const int HardwareID, const char* 
 				//Perform any On/Off actions
 				std::string OnAction=sd[3];
 				std::string OffAction=sd[4];
-
+  
+				if(devType==pTypeEvohome)
+				{
+					boost::replace_all(OnAction, "{deviceid}", ID);//future expansion
+					boost::replace_all(OnAction, "{status}", Evohome_ClientStatus_Desc(nValue));
+					bIsLightSwitchOn=true;//Force use of OnAction for all actions
+				}
+				
 				HandleOnOffAction(bIsLightSwitchOn,OnAction,OffAction);
 			}
 
@@ -3430,7 +3449,7 @@ void CSQLHelper::UpdateTemperatureLog()
 	unsigned long long ID=0;
 
 	std::vector<std::vector<std::string> > result;
-	sprintf(szTmp,"SELECT ID,Type,SubType,nValue,sValue,LastUpdate FROM DeviceStatus WHERE (Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR (Type=%d AND SubType=%d) OR (Type=%d AND SubType=%d))",
+	sprintf(szTmp,"SELECT ID,Type,SubType,nValue,sValue,LastUpdate FROM DeviceStatus WHERE (Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR Type=%d OR (Type=%d AND SubType=%d) OR (Type=%d AND SubType=%d))",
 		pTypeTEMP,
 		pTypeHUM,
 		pTypeTEMP_HUM,
@@ -3441,6 +3460,8 @@ void CSQLHelper::UpdateTemperatureLog()
 		pTypeThermostat1,
 		pTypeRFXSensor,
 		pTypeRego6XXTemp,
+		pTypeEvohomeZone,
+		pTypeEvohomeWater,
 		pTypeGeneral,sTypeSystemTemp,
 		pTypeThermostat,sTypeThermSetpoint
 		);
@@ -3485,6 +3506,7 @@ void CSQLHelper::UpdateTemperatureLog()
 			unsigned char humidity=0;
 			int barometer=0;
 			float dewpoint=0;
+			float setpoint=0;
 
 			switch (dType)
 			{
@@ -3495,6 +3517,24 @@ void CSQLHelper::UpdateTemperatureLog()
 				break;
 			case pTypeThermostat1:
 				temp=(float)atof(splitresults[0].c_str());
+				break;
+			case pTypeEvohomeWater:
+				if (splitresults.size()>=2)
+				{
+					temp=(float)atof(splitresults[0].c_str());
+					setpoint=(float)(splitresults[1]=="On")?60:0;
+					//FIXME hack setpoint just on or off...may throw graph out so maybe pick sensible on off values? 
+					//(if the actual hw set point was retrievable should use that otherwise some config option)
+					//actually if we plot the average it should give us an idea of how often hw has been switched on
+					//more meaningful if it was plotted against the zone valve & boiler relay i guess (actual time hw heated)
+				}
+				break;
+			case pTypeEvohomeZone:
+				if (splitresults.size()>=2)
+				{
+					temp=(float)atof(splitresults[0].c_str());
+					setpoint=(float)atof(splitresults[1].c_str());
+				}
 				break;
 			case pTypeHUM:
 				humidity=nValue;
@@ -3555,14 +3595,15 @@ void CSQLHelper::UpdateTemperatureLog()
 			}
 			//insert record
 			sprintf(szTmp,
-				"INSERT INTO Temperature (DeviceRowID, Temperature, Chill, Humidity, Barometer, DewPoint) "
-				"VALUES ('%llu', '%.2f', '%.2f', '%d', '%d', '%.2f')",
+				"INSERT INTO Temperature (DeviceRowID, Temperature, Chill, Humidity, Barometer, DewPoint, SetPoint) "
+				"VALUES ('%llu', '%.2f', '%.2f', '%d', '%d', '%.2f', '%.2f')",
 				ID,
 				temp,
 				chill,
 				humidity,
 				barometer,
-				dewpoint
+				dewpoint,
+				setpoint
 				);
 			std::vector<std::vector<std::string> > result2;
 			result2=query(szTmp);
@@ -4354,7 +4395,7 @@ void CSQLHelper::AddCalendarTemperature()
 		std::stringstream s_str( sddev[0] );
 		s_str >> ID;
 
-		sprintf(szTmp,"SELECT MIN(Temperature), MAX(Temperature), AVG(Temperature), MIN(Chill), MAX(Chill), MAX(Humidity), MAX(Barometer), MIN(DewPoint) FROM Temperature WHERE (DeviceRowID='%llu' AND Date>='%s' AND Date<'%s')",
+		sprintf(szTmp,"SELECT MIN(Temperature), MAX(Temperature), AVG(Temperature), MIN(Chill), MAX(Chill), MAX(Humidity), MAX(Barometer), MIN(DewPoint), MIN(SetPoint), MAX(SetPoint), AVG(SetPoint) FROM Temperature WHERE (DeviceRowID='%llu' AND Date>='%s' AND Date<'%s')",
 			ID,
 			szDateStart,
 			szDateEnd
@@ -4372,10 +4413,13 @@ void CSQLHelper::AddCalendarTemperature()
 			int humidity=atoi(sd[5].c_str());
 			int barometer=atoi(sd[6].c_str());
 			float dewpoint=(float)atof(sd[7].c_str());
+			float setpoint_min=(float)atof(sd[8].c_str());
+			float setpoint_max=(float)atof(sd[9].c_str());
+			float setpoint_avg=(float)atof(sd[10].c_str());
 			//insert into calendar table
 			sprintf(szTmp,
-				"INSERT INTO Temperature_Calendar (DeviceRowID, Temp_Min, Temp_Max, Temp_Avg, Chill_Min, Chill_Max, Humidity, Barometer, DewPoint, Date) "
-				"VALUES ('%llu', '%.2f', '%.2f', '%.2f', '%.2f', '%.2f', '%d', '%d', '%.2f', '%s')",
+				"INSERT INTO Temperature_Calendar (DeviceRowID, Temp_Min, Temp_Max, Temp_Avg, Chill_Min, Chill_Max, Humidity, Barometer, DewPoint, SetPoint_Min, SetPoint_Max, SetPoint_Avg, Date) "
+				"VALUES ('%llu', '%.2f', '%.2f', '%.2f', '%.2f', '%.2f', '%d', '%d', '%.2f', '%.2f', '%.2f', '%.2f', '%s')",
 				ID,
 				temp_min,
 				temp_max,
@@ -4385,6 +4429,9 @@ void CSQLHelper::AddCalendarTemperature()
 				humidity,
 				barometer,
 				dewpoint,
+				setpoint_min,
+				setpoint_max,
+				setpoint_avg,
 				szDateStart
 				);
 			result=query(szTmp);

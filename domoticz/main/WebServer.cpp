@@ -2,6 +2,7 @@
 #include "WebServer.h"
 #include <boost/bind.hpp>
 #include <boost/lexical_cast.hpp>
+#include <boost/algorithm/string/join.hpp>
 #include <iostream>
 #include "mainworker.h"
 #include "Helper.h"
@@ -346,6 +347,7 @@ bool CWebServer::StartServer(const std::string &listenaddress, const std::string
 	RegisterRType("deletescene", boost::bind(&CWebServer::RType_DeleteScene, this, _1));
 	RegisterRType("updatescene", boost::bind(&CWebServer::RType_UpdateScene, this, _1));
 	RegisterRType("createvirtualsensor", boost::bind(&CWebServer::RType_CreateVirtualSensor, this, _1));
+	RegisterRType("createevohomesensor", boost::bind(&CWebServer::RType_CreateEvohomeSensor, this, _1));
 	RegisterRType("custom_light_icons", boost::bind(&CWebServer::RType_CustomLightIcons, this, _1));
 	RegisterRType("plans", boost::bind(&CWebServer::RType_Plans, this, _1));
 	RegisterRType("floorplans", boost::bind(&CWebServer::RType_FloorPlans, this, _1));
@@ -579,6 +581,9 @@ void CWebServer::Cmd_AddHardware(Json::Value &root)
 	else if (htype == HTYPE_Dummy) {
 		//all fine here!
 	}
+	else if (htype == HTYPE_EVOHOME) {
+		//all fine here!
+	}
 	else if (htype == HTYPE_PiFace) {
 		//all fine here!
 	}
@@ -703,6 +708,9 @@ void CWebServer::Cmd_UpdateHardware(Json::Value &root)
 		//All fine here
 	}
 	else if (htype == HTYPE_Dummy) {
+		//All fine here
+	}
+	else if (htype == HTYPE_EVOHOME) {
 		//All fine here
 	}
 	else if (htype == HTYPE_PiFace) {
@@ -3548,6 +3556,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 				case HTYPE_EnOceanESP2:
 				case HTYPE_EnOceanESP3:
 				case HTYPE_Dummy:
+				case HTYPE_EVOHOME:
 				case HTYPE_RaspberryGPIO:
 					root["result"][ii]["idx"]=ID;
 					root["result"][ii]["Name"]=Name;
@@ -3617,6 +3626,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 				case pTypeLighting6:
 				case pTypeLimitlessLights:
 				case pTypeSecurity1:
+				case pTypeEvohome:
 				case pTypeCurtain:
 				case pTypeBlinds:
 				case pTypeRFY:
@@ -3687,6 +3697,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 					case pTypeLighting6:
 					case pTypeLimitlessLights:
 					case pTypeSecurity1:
+					case pTypeEvohome:
 					case pTypeCurtain:
 					case pTypeBlinds:
 					case pTypeRFY:
@@ -4590,6 +4601,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			(dType==pTypeLighting6)||
 			(dType==pTypeLimitlessLights)||
 			(dType==pTypeSecurity1)||
+			(dType==pTypeEvohome)||
 			(dType==pTypeCurtain)||
 			(dType==pTypeBlinds)||
 			(dType==pTypeRFY)||
@@ -4619,6 +4631,8 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			(dType==pTypeTEMP_HUM)||
 			(dType==pTypeTEMP_HUM_BARO)||
 			(dType==pTypeTEMP_BARO)||
+			(dType==pTypeEvohomeZone)||
+			(dType==pTypeEvohomeWater)||
 			(dType==pTypeThermostat1)||
 			(dType==pTypeRego6XXTemp)||
 			((dType==pTypeRFXSensor)&&(dSubType==sTypeRFXSensorTemp))
@@ -4857,6 +4871,13 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			root["result"][ii]["val"]=NTYPE_TEMPERATURE;
 			root["result"][ii]["text"]=Notification_Type_Desc(NTYPE_TEMPERATURE,0);
 			root["result"][ii]["ptag"]=Notification_Type_Desc(NTYPE_TEMPERATURE,1);
+			ii++;
+		}
+		if ((dType == pTypeEvohomeZone))
+		{
+			root["result"][ii]["val"]=NTYPE_TEMPERATURE;
+			root["result"][ii]["text"]=Notification_Type_Desc(NTYPE_SETPOINT,0); //FIXME NTYPE_SETPOINT implementation?
+			root["result"][ii]["ptag"]=Notification_Type_Desc(NTYPE_SETPOINT,1);
 			ii++;
 		}
 		if ((dType==pTypeRFXSensor)&&((dSubType==sTypeRFXSensorAD)||(dSubType==sTypeRFXSensorVolt)))
@@ -5383,6 +5404,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			(dType!=pTypeLighting6)&&
 			(dType!=pTypeLimitlessLights)&&
 			(dType!=pTypeSecurity1)&&
+			(dType!=pTypeEvohome)&&
 			(dType!=pTypeCurtain)&&
 			(dType!=pTypeBlinds)&&
 			(dType!=pTypeRFY)&&
@@ -5545,6 +5567,55 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			return;
 		}
 	}
+	else if (cparam=="switchmodal")
+	{
+		int urights=3;
+		if (bHaveUser)
+		{
+			int iUser=-1;
+			iUser=FindUser(m_pWebEm->m_actualuser.c_str());
+			if (iUser != -1)
+			{
+				urights = (int)m_users[iUser].userrights;
+				_log.Log(LOG_STATUS, "User: %s initiated a modal command", m_users[iUser].Username.c_str());
+			}
+		}
+		if (urights<1)
+			return;
+
+		std::string idx=m_pWebEm->FindValue("idx");
+		std::string switchcmd=m_pWebEm->FindValue("status");
+		std::string action=m_pWebEm->FindValue("action");//Run action or not (update status only)
+		std::string onlyonchange=m_pWebEm->FindValue("ooc");//No update unless the value changed (check if updated)
+		//The on action is used to call a script to update the real device so we only want to use it when altering the status in the Domoticz Web Client
+		//If we're posting the status from the real device to domoticz we don't want to run the on action script ("action"!=1) to avoid loops and contention
+		//""... we only want to log a change (and trigger an event) when the status has actually changed ("ooc"==1) i.e. suppress non transient updates
+		if ((idx=="")||(switchcmd==""))
+			return;
+
+		std::string passcode=m_pWebEm->FindValue("passcode");
+		if (passcode.size()>0) 
+		{
+			//Check if passcode is correct
+			passcode=base64_encode((const unsigned char*)passcode.c_str(),passcode.size());
+			std::string rpassword;
+			int nValue=1;
+			m_sql.GetPreferencesVar("ProtectionPassword",nValue,rpassword);
+			if (passcode!=rpassword)
+			{
+				root["title"]="Modal";
+				root["status"]="ERROR";
+				root["message"]="WRONG CODE";
+				return;
+			}
+		}
+
+		if (m_mainworker.SwitchModal(idx,switchcmd,action,onlyonchange)==true)//FIXME we need to return a status of already set if ooc=="1" and no status update was performed
+		{
+			root["status"]="OK";
+			root["title"]="Modal";
+		}
+	} 
 	else if (cparam=="switchlight")
 	{
 		int urights=3;
@@ -7387,6 +7458,7 @@ void CWebServer::GetJSonDevices(Json::Value &root, const std::string &rused, con
 						(dType!=pTypeLighting6)&&
 						(dType!=pTypeLimitlessLights)&&
 						(dType!=pTypeSecurity1)&&
+						(dType!=pTypeEvohome)&&
 						(dType!=pTypeCurtain)&&
 						(dType!=pTypeBlinds)&&
 						(dType!=pTypeRFY)&&
@@ -7406,6 +7478,8 @@ void CWebServer::GetJSonDevices(Json::Value &root, const std::string &rused, con
 						(dType!=pTypeTEMP_HUM)&&
 						(dType!=pTypeTEMP_HUM_BARO)&&
 						(dType!=pTypeTEMP_BARO)&&
+						(dType!=pTypeEvohomeZone)&&
+						(dType!=pTypeEvohomeWater)&&
 						(!((dType==pTypeWIND)&&(dSubType==sTypeWIND4)))&&
 						(!((dType==pTypeWIND)&&(dSubType==sTypeWINDNoTemp)))&&
 						(!((dType==pTypeUV)&&(dSubType==sTypeUV3)))&&
@@ -7812,6 +7886,91 @@ void CWebServer::GetJSonDevices(Json::Value &root, const std::string &rused, con
 				sprintf(szData,"%s", lstatus.c_str());
 				root["result"][ii]["Data"]=szData;
 				root["result"][ii]["HaveTimeout"]=false;
+			}
+			else if (dType==pTypeEvohome)
+			{
+				std::string lstatus="";
+				int llevel=0;
+				bool bHaveDimmer=false;
+				bool bHaveGroupCmd=false;
+				int maxDimLevel=0;
+
+				GetLightStatus(dType, dSubType, switchtype,nValue, sValue, lstatus, llevel, bHaveDimmer, maxDimLevel, bHaveGroupCmd);
+
+				root["result"][ii]["Status"]=lstatus;
+				root["result"][ii]["HaveDimmer"]=bHaveDimmer;
+				root["result"][ii]["MaxDimLevel"]=maxDimLevel;
+				root["result"][ii]["HaveGroupCmd"]=bHaveGroupCmd;
+                root["result"][ii]["SwitchType"]="evohome";
+				root["result"][ii]["SwitchTypeVal"]=switchtype; //was 0?;
+				root["result"][ii]["TypeImg"]="evohome";
+				root["result"][ii]["StrParam1"]=strParam1;
+				root["result"][ii]["StrParam2"]=strParam2;
+				root["result"][ii]["Protected"]=(iProtected!=0);
+
+				sprintf(szData,"%s", lstatus.c_str());
+				root["result"][ii]["Data"]=szData;
+				root["result"][ii]["HaveTimeout"]=false;
+			}
+			else if ((dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater))
+			{
+				root["result"][ii]["HaveTimeout"]=bHaveTimeout;
+				root["result"][ii]["TypeImg"]="override_mini";
+				
+				std::vector<std::string> strarray;
+				StringSplit(sValue, ";", strarray);
+				if (strarray.size()>=3)
+				{
+					//FIXME proper bounds check
+					int i=0;
+					root["result"][ii]["AddjValue"]=AddjValue;
+					root["result"][ii]["AddjMulti"]=AddjMulti;
+					root["result"][ii]["AddjValue2"]=AddjValue2;
+					root["result"][ii]["AddjMulti2"]=AddjMulti2;
+
+					double tempCelcius=atof(strarray[i++].c_str());
+					double temp=ConvertTemperature(tempCelcius,tempsign);
+					double tempSetPoint;
+					root["result"][ii]["Temp"]=temp;
+					if (dType == pTypeEvohomeZone)
+					{
+						tempCelcius=atof(strarray[i++].c_str());
+						tempSetPoint=ConvertTemperature(tempCelcius,tempsign);
+						root["result"][ii]["SetPoint"]=tempSetPoint;
+					}
+					else
+						root["result"][ii]["State"]=strarray[i++];
+				
+					std::string strstatus=strarray[i++];
+					/*if(strstatus=="Auto")//FIXME better way to convert?
+						strstatus="Normal";
+					else if(strstatus=="AutoWithEco")//FIXME better way to convert?
+						strstatus="Economy";
+					else if(strstatus=="DayOff")//FIXME better way to convert?
+						strstatus="Day Off";
+					else if(strstatus=="HeatingOff")//FIXME better way to convert?
+						strstatus="Heating Off";*/
+					root["result"][ii]["Status"]=strstatus;//FIXME maybe better to rename Status to Mode?
+					
+					if ((dType == pTypeEvohomeZone || dType == pTypeEvohomeWater) && strarray.size()>=4)
+					{
+						root["result"][ii]["Until"]=strarray[i++];
+					}
+					if (dType == pTypeEvohomeZone)
+					{
+						if (strarray.size()>=4)
+							sprintf(szData,"%.1f %c, (%.1f %c), %s until %s", temp,tempsign,tempSetPoint,tempsign,strstatus.c_str(),strarray[3].c_str());
+						else
+							sprintf(szData,"%.1f %c, (%.1f %c), %s", temp,tempsign,tempSetPoint,tempsign,strstatus.c_str());
+					}
+					else
+						if (strarray.size()>=4)
+							sprintf(szData,"%.1f %c, %s, %s until %s", temp,tempsign,strarray[1].c_str(),strstatus.c_str(),strarray[3].c_str());
+						else
+							sprintf(szData,"%.1f %c, %s, %s", temp,tempsign,strarray[1].c_str(),strstatus.c_str());
+					root["result"][ii]["Data"]=szData;
+					root["result"][ii]["HaveTimeout"]=bHaveTimeout;
+				}
 			}
 			else if ((dType == pTypeTEMP) || (dType == pTypeRego6XXTemp))
 			{
@@ -9101,6 +9260,64 @@ void CWebServer::RType_UpdateScene(Json::Value &root)
 		idx.c_str()
 		);
 	m_sql.query(szTmp);
+}
+
+void CWebServer::RType_CreateEvohomeSensor(Json::Value &root)
+{
+	if (m_pWebEm->m_actualuser_rights != 2)
+	{
+		//No admin user, and not allowed to be here
+		return;
+	}
+
+	std::string idx = m_pWebEm->FindValue("idx");
+	std::string ssensortype = m_pWebEm->FindValue("sensortype");
+	if ((idx == "") || (ssensortype == ""))
+		return;
+
+	bool bCreated = false;
+	int iSensorType = atoi(ssensortype.c_str());
+
+	int HwdID = atoi(idx.c_str());
+
+	//Make a unique number for ID
+	std::stringstream szQuery;
+	std::vector<std::vector<std::string> > result;
+	szQuery << "SELECT MAX(ID) FROM DeviceStatus";
+	result = m_sql.query(szQuery.str());
+
+	unsigned long nid = 1; //could be the first device ever
+
+	if (result.size() > 0)
+	{
+		nid = atol(result[0][0].c_str());
+	}
+	nid += 92000;
+	char ID[40];
+	sprintf(ID, "%ld", nid);
+
+	std::string devname;
+
+	switch (iSensorType)
+	{
+	case pTypeEvohome: //Controller
+		m_sql.UpdateValue(HwdID, ID, 1, pTypeEvohome, sTypeEvohome, 10, 255, 0, "0.0;0.0;Normal", devname);
+		bCreated = true;
+		break;
+	case pTypeEvohomeZone:
+		m_sql.UpdateValue(HwdID, ID, 1, pTypeEvohomeZone, sTypeEvohomeZone, 10, 255, 0, "0.0;0.0;Auto", devname);
+		bCreated = true;
+		break;
+	case pTypeEvohomeWater:
+		m_sql.UpdateValue(HwdID, ID, 1, pTypeEvohomeWater, sTypeEvohomeWater, 10, 255, 50, "0.0;Off;Auto", devname);
+		bCreated = true;
+		break;
+	}
+	if (bCreated)
+	{
+		root["status"] = "OK";
+		root["title"] = "CreateEvohomeSensor";
+	}
 }
 
 void CWebServer::RType_CreateVirtualSensor(Json::Value &root)
@@ -10520,6 +10737,7 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 	}
 
 	std::string idx = m_pWebEm->FindValue("idx");
+	std::string deviceid = m_pWebEm->FindValue("deviceid");
 	std::string name = m_pWebEm->FindValue("name");
 	std::string sused = m_pWebEm->FindValue("used");
 	std::string sswitchtype = m_pWebEm->FindValue("switchtype");
@@ -10529,12 +10747,14 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 	std::string addjvalue2 = m_pWebEm->FindValue("addjvalue2");
 	std::string addjmulti2 = m_pWebEm->FindValue("addjmulti2");
 	std::string setPoint = m_pWebEm->FindValue("setpoint");
+	std::string state = m_pWebEm->FindValue("state");
+	std::string mode = m_pWebEm->FindValue("mode");
+	std::string until = m_pWebEm->FindValue("until");
 	std::string sCustomImage = m_pWebEm->FindValue("customimage");
 
 	std::string strParam1 = base64_decode(m_pWebEm->FindValue("strparam1"));
 	std::string strParam2 = base64_decode(m_pWebEm->FindValue("strparam2"));
-	std::string tmpstr = m_pWebEm->FindValue("protected");
-	int iProtected = (tmpstr == "true") ? 1 : 0;
+	std::string strProtected = m_pWebEm->FindValue("protected");
 
 	char szTmp[200];
 
@@ -10569,7 +10789,37 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 
 	std::stringstream szQuery;
 	std::vector<std::vector<std::string> > result;
-	if (setPoint != "")
+	
+	szQuery << "SELECT HardwareID, DeviceID,Unit,Type,SubType,SwitchType,sValue,StrParam1,StrParam2,Protected FROM DeviceStatus WHERE (ID == " << idx << ")";
+	result=m_sql.query(szQuery.str());
+	if (result.size()<1)
+		return;
+	szQuery.clear();
+	szQuery.str("");
+	std::vector<std::string> sd=result[0];
+		
+	//FIXME we need a way to make sure our script parameters are not overwritten
+	//This would be fine except where we want to update to ""
+	if(strParam1=="")
+		strParam1=sd[7];
+	if(strParam2=="")
+		strParam2=sd[8];
+	if(strProtected=="")
+		strProtected=sd[9];
+	int iProtected = (strProtected == "true" || strProtected=="1") ? 1 : 0;
+
+	int HardwareID = atoi(sd[0].c_str());
+	unsigned long ID;
+	std::stringstream s_strid;
+	s_strid << std::hex << sd[1];
+	s_strid >> ID;
+	unsigned char Unit=atoi(sd[2].c_str());
+	unsigned char dType=atoi(sd[3].c_str());
+	unsigned char dSubType=atoi(sd[4].c_str());
+	
+	int nEvoMode=0;
+	
+	if (setPoint != "" || state!="")
 	{
 		double tempcelcius = atof(setPoint.c_str());
 		if (m_sql.m_tempunit == TEMPUNIT_F)
@@ -10578,10 +10828,44 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 			tempcelcius = (tempcelcius - 32) / 1.8;
 		}
 		sprintf(szTmp, "%.2f", tempcelcius);
-		szQuery << "UPDATE DeviceStatus SET Used=" << used << ", sValue='" << szTmp << "' WHERE (ID == " << idx << ")";
-		m_sql.query(szQuery.str());
-		szQuery.clear();
-		szQuery.str("");
+		std::string szUpdateStat;
+		if(dType==pTypeEvohomeZone || dType==pTypeEvohomeWater)
+		{
+			if(mode=="PermanentOverride")
+				nEvoMode=1;
+			else if(mode=="TemporaryOverride")
+				nEvoMode=2;
+			std::vector<std::string> strarray;
+			StringSplit(sd[6], ";", strarray);
+			if (strarray.size() >= 3)
+			{
+				if(dType==pTypeEvohomeWater)
+					strarray[1]=state;
+				else
+					strarray[1]=szTmp;
+				strarray[2]=mode;
+				if(nEvoMode==2)
+				{
+					if(strarray.size()<4) //add or set until
+						strarray.push_back(until);
+					else
+						strarray[3]=until;
+				}
+				else
+					if(strarray.size()>=4) //remove until
+						strarray.resize(3);
+				szUpdateStat=boost::algorithm::join(strarray, ";");
+			}
+		}
+		else
+			szUpdateStat=szTmp;
+		if(szUpdateStat!="")
+		{
+			szQuery << "UPDATE DeviceStatus SET Used=" << used << ", sValue='" << szUpdateStat << "' WHERE (ID == " << idx << ")";
+			m_sql.query(szQuery.str());
+			szQuery.clear();
+			szQuery.str("");
+		}
 	}
 	if (name == "")
 	{
@@ -10596,12 +10880,13 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 	}
 	result = m_sql.query(szQuery.str());
 
+	//FIXME we need to make sure any script parameters are not overwritten
 	szQuery.clear();
 	szQuery.str("");
 	szQuery << "UPDATE DeviceStatus SET StrParam1='" << strParam1 << "', StrParam2='" << strParam2 << "', Protected=" << iProtected << " WHERE (ID == " << idx << ")";
 	result = m_sql.query(szQuery.str());
-
-	if (setPoint != "")
+	
+	if (setPoint != "" || state!="")
 	{
 		int urights = 3;
 		if (bHaveUser)
@@ -10616,7 +10901,21 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 		}
 		if (urights < 1)
 			return;
-		m_mainworker.SetSetPoint(idx, (float)atof(setPoint.c_str()));
+		if(dType==pTypeEvohomeWater)
+			m_mainworker.SetSetPoint(idx, (state=="On")?1:0, nEvoMode, until);//FIXME float not guaranteed precise?
+		else if(dType==pTypeEvohomeZone)
+			m_mainworker.SetSetPoint(idx, (float)atof(setPoint.c_str()), nEvoMode, until);
+		else
+			m_mainworker.SetSetPoint(idx, (float)atof(setPoint.c_str()));
+	}
+	
+	//FIXME evohome hack we need the zone id to update the correct zone...but this should be ok as a generic call?
+	if (deviceid != "")
+	{
+		szQuery.clear();
+		szQuery.str("");
+		szQuery << "UPDATE DeviceStatus SET DeviceID='" << deviceid << "' WHERE (ID == " << idx << ")";
+		result = m_sql.query(szQuery.str());
 	}
 
 	if (addjvalue != "")
@@ -11248,6 +11547,7 @@ void CWebServer::RType_LightLog(Json::Value &root)
 		(dType != pTypeLighting6) &&
 		(dType != pTypeLimitlessLights) &&
 		(dType != pTypeSecurity1) &&
+		(dType != pTypeEvohome)&&
 		(dType != pTypeCurtain) &&
 		(dType != pTypeBlinds) &&
 		(dType != pTypeRFY) &&
@@ -11428,7 +11728,7 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 
 			szQuery.clear();
 			szQuery.str("");
-			szQuery << "SELECT Temperature, Chill, Humidity, Barometer, Date FROM " << dbasetable << " WHERE (DeviceRowID==" << idx << ") ORDER BY Date ASC";
+			szQuery << "SELECT Temperature, Chill, Humidity, Barometer, Date, SetPoint FROM " << dbasetable << " WHERE (DeviceRowID==" << idx << ") ORDER BY Date ASC";
 			result = m_sql.query(szQuery.str());
 			if (result.size()>0)
 			{
@@ -11451,7 +11751,9 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 						(dType == pTypeThermostat1) ||
 						((dType == pTypeRFXSensor) && (dSubType == sTypeRFXSensorTemp)) ||
 						((dType == pTypeGeneral) && (dSubType == sTypeSystemTemp)) ||
-						((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint))
+						((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint)) ||
+						(dType == pTypeEvohomeZone) ||
+						(dType == pTypeEvohomeWater)
 						)
 					{
 						double tvalue = ConvertTemperature(atof(sd[0].c_str()), tempsign);
@@ -11489,6 +11791,11 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 							sprintf(szTmp, "%.1f", atof(sd[3].c_str()) / 10.0f);
 							root["result"][ii]["ba"] = szTmp;
 						}
+					}
+					if((dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater))
+					{
+						double se = ConvertTemperature(atof(sd[5].c_str()), tempsign);
+						root["result"][ii]["se"] = se;
 					}
 
 					ii++;
@@ -12937,7 +13244,7 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 			//Actual Year
 			szQuery.clear();
 			szQuery.str("");
-			szQuery << "SELECT Temp_Min, Temp_Max, Chill_Min, Chill_Max, Humidity, Barometer, Temp_Avg, Date FROM " << dbasetable << " WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStart << "' AND Date<='" << szDateEnd << "') ORDER BY Date ASC";
+			szQuery << "SELECT Temp_Min, Temp_Max, Chill_Min, Chill_Max, Humidity, Barometer, Temp_Avg, Date, SetPoint_Min, SetPoint_Max, SetPoint_Avg FROM " << dbasetable << " WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStart << "' AND Date<='" << szDateEnd << "') ORDER BY Date ASC";
 			result = m_sql.query(szQuery.str());
 			int ii = 0;
 			if (result.size()>0)
@@ -12954,7 +13261,8 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 						((dType == pTypeRFXSensor) && (dSubType == sTypeRFXSensorTemp)) ||
 						((dType == pTypeUV) && (dSubType == sTypeUV3)) ||
 						((dType == pTypeGeneral) && (dSubType == sTypeSystemTemp)) ||
-						((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint))
+						((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint)) ||
+						(dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater)
 						)
 					{
 						bool bOK = true;
@@ -13007,13 +13315,22 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 							root["result"][ii]["ba"] = szTmp;
 						}
 					}
+					if((dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater))
+					{
+						double sm = ConvertTemperature(atof(sd[8].c_str()), tempsign);
+						double sx = ConvertTemperature(atof(sd[9].c_str()), tempsign);
+						double se = ConvertTemperature(atof(sd[10].c_str()), tempsign);
+						root["result"][ii]["sm"] = sm;
+						root["result"][ii]["se"] = se;
+						root["result"][ii]["sx"] = sx;
+					}
 					ii++;
 				}
 			}
 			//add today (have to calculate it)
 			szQuery.clear();
 			szQuery.str("");
-			szQuery << "SELECT MIN(Temperature), MAX(Temperature), MIN(Chill), MAX(Chill), MAX(Humidity), MAX(Barometer), AVG(Temperature) FROM Temperature WHERE (DeviceRowID=" << idx << " AND Date>='" << szDateEnd << "')";
+			szQuery << "SELECT MIN(Temperature), MAX(Temperature), MIN(Chill), MAX(Chill), MAX(Humidity), MAX(Barometer), AVG(Temperature), MIN(SetPoint), MAX(SetPoint), AVG(SetPoint) FROM Temperature WHERE (DeviceRowID=" << idx << " AND Date>='" << szDateEnd << "')";
 			result = m_sql.query(szQuery.str());
 			if (result.size()>0)
 			{
@@ -13024,7 +13341,8 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 					((dType == pTypeRego6XXTemp) || (dType == pTypeTEMP) || (dType == pTypeTEMP_HUM) || (dType == pTypeTEMP_HUM_BARO) || (dType == pTypeTEMP_BARO) || (dType == pTypeWIND) || (dType == pTypeThermostat1)) ||
 					((dType == pTypeUV) && (dSubType == sTypeUV3)) ||
 					((dType == pTypeWIND) && (dSubType == sTypeWIND4)) ||
-					((dType == pTypeWIND) && (dSubType == sTypeWINDNoTemp))
+					((dType == pTypeWIND) && (dSubType == sTypeWINDNoTemp)) ||
+					(dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater)
 					)
 				{
 					double te = ConvertTemperature(atof(sd[1].c_str()), tempsign);
@@ -13070,12 +13388,21 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 						root["result"][ii]["ba"] = szTmp;
 					}
 				}
+				if((dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater))
+				{
+					double sx = ConvertTemperature(atof(sd[8].c_str()), tempsign);
+					double sm = ConvertTemperature(atof(sd[7].c_str()), tempsign);
+					double se = ConvertTemperature(atof(sd[9].c_str()), tempsign);
+					root["result"][ii]["se"] = se;
+					root["result"][ii]["sm"] = sm;
+					root["result"][ii]["sx"] = sx;
+				}
 				ii++;
 			}
 			//Previous Year
 			szQuery.clear();
 			szQuery.str("");
-			szQuery << "SELECT Temp_Min, Temp_Max, Chill_Min, Chill_Max, Humidity, Barometer, Temp_Avg, Date FROM " << dbasetable << " WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStartPrev << "' AND Date<='" << szDateEndPrev << "') ORDER BY Date ASC";
+			szQuery << "SELECT Temp_Min, Temp_Max, Chill_Min, Chill_Max, Humidity, Barometer, Temp_Avg, Date, SetPoint_Min, SetPoint_Max, SetPoint_Avg FROM " << dbasetable << " WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStartPrev << "' AND Date<='" << szDateEndPrev << "') ORDER BY Date ASC";
 			result = m_sql.query(szQuery.str());
 			if (result.size()>0)
 			{
@@ -13092,7 +13419,8 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 						((dType == pTypeRFXSensor) && (dSubType == sTypeRFXSensorTemp)) ||
 						((dType == pTypeUV) && (dSubType == sTypeUV3)) ||
 						((dType == pTypeGeneral) && (dSubType == sTypeSystemTemp)) ||
-						((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint))
+						((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint)) ||
+						(dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater)
 						)
 					{
 						bool bOK = true;
@@ -14221,6 +14549,7 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 		std::string sgraphHum = m_pWebEm->FindValue("graphHum");
 		std::string sgraphBaro = m_pWebEm->FindValue("graphBaro");
 		std::string sgraphDew = m_pWebEm->FindValue("graphDew");
+		std::string sgraphSet = m_pWebEm->FindValue("graphSet");
 
 		if (sensor == "temp") {
 			root["status"] = "OK";
@@ -14231,6 +14560,7 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 			bool sendHum = false;
 			bool sendBaro = false;
 			bool sendDew = false;
+			bool sendSet = false;
 
 			if ((sgraphTemp == "true") &&
 				((dType == pTypeRego6XXTemp) || (dType == pTypeTEMP) || (dType == pTypeTEMP_HUM) || (dType == pTypeTEMP_HUM_BARO) || (dType == pTypeTEMP_BARO) || (dType == pTypeWIND) || (dType == pTypeThermostat1) ||
@@ -14238,11 +14568,17 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 				((dType == pTypeWIND) && (dSubType == sTypeWIND4)) ||
 				((dType == pTypeWIND) && (dSubType == sTypeWINDNoTemp)) ||
 				((dType == pTypeRFXSensor) && (dSubType == sTypeRFXSensorTemp)) ||
-				((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint))
+				((dType == pTypeThermostat) && (dSubType == sTypeThermSetpoint)) ||
+				(dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater)
 				)
 				)
 			{
 				sendTemp = true;
+			}
+			if ((sgraphSet == "true") &&
+				((dType == pTypeEvohomeZone) || (dType == pTypeEvohomeWater))) //FIXME cheat for water setpoint is just on or off
+			{
+				sendSet = true;
 			}
 			if ((sgraphChill == "true") &&
 				(((dType == pTypeWIND) && (dSubType == sTypeWIND4)) ||
@@ -14271,7 +14607,7 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 			if (sgraphtype == "1")
 			{
 				// Need to get all values of the end date so 23:59:59 is appended to the date string
-				szQuery << "SELECT Temperature, Chill, Humidity, Barometer, Date, DewPoint FROM Temperature WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStart << "' AND Date<='" << szDateEnd << " 23:59:59') ORDER BY Date ASC";
+				szQuery << "SELECT Temperature, Chill, Humidity, Barometer, Date, DewPoint, SetPoint FROM Temperature WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStart << "' AND Date<='" << szDateEnd << " 23:59:59') ORDER BY Date ASC";
 				result = m_sql.query(szQuery.str());
 				int ii = 0;
 				if (result.size()>0)
@@ -14323,13 +14659,18 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 							double dp = ConvertTemperature(atof(sd[5].c_str()), tempsign);
 							root["result"][ii]["dp"] = dp;
 						}
+						if (sendSet)
+						{
+							double se = ConvertTemperature(atof(sd[6].c_str()), tempsign);
+							root["result"][ii]["se"] = se;
+						}
 						ii++;
 					}
 				}
 			}
 			else
 			{
-				szQuery << "SELECT Temp_Min, Temp_Max, Chill_Min, Chill_Max, Humidity, Barometer, Date, DewPoint, Temp_Avg FROM Temperature_Calendar WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStart << "' AND Date<='" << szDateEnd << "') ORDER BY Date ASC";
+				szQuery << "SELECT Temp_Min, Temp_Max, Chill_Min, Chill_Max, Humidity, Barometer, Date, DewPoint, Temp_Avg, SetPoint_Min, SetPoint_Max, SetPoint_Avg FROM Temperature_Calendar WHERE (DeviceRowID==" << idx << " AND Date>='" << szDateStart << "' AND Date<='" << szDateEnd << "') ORDER BY Date ASC";
 				result = m_sql.query(szQuery.str());
 				int ii = 0;
 				if (result.size()>0)
@@ -14385,6 +14726,19 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 							double dp = ConvertTemperature(atof(sd[7].c_str()), tempsign);
 							root["result"][ii]["dp"] = dp;
 						}
+						if (sendSet)
+						{
+							double sm = ConvertTemperature(atof(sd[9].c_str()), tempsign);
+							double sx = ConvertTemperature(atof(sd[10].c_str()), tempsign);
+							double se = ConvertTemperature(atof(sd[11].c_str()), tempsign);
+							root["result"][ii]["sm"] = sm;
+							root["result"][ii]["se"] = se;
+							root["result"][ii]["sx"] = sx;
+							char szTmp[1024];
+							sprintf(szTmp,"%.1f %.1f %.1f",sm,se,sx);
+							_log.Log(LOG_STATUS,szTmp);
+							
+						}
 						ii++;
 					}
 				}
@@ -14392,7 +14746,7 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 				//add today (have to calculate it)
 				szQuery.clear();
 				szQuery.str("");
-				szQuery << "SELECT MIN(Temperature), MAX(Temperature), MIN(Chill), MAX(Chill), MAX(Humidity), MAX(Barometer), MIN(DewPoint), AVG(Temperature) FROM Temperature WHERE (DeviceRowID=" << idx << " AND Date>='" << szDateEnd << "')";
+				szQuery << "SELECT MIN(Temperature), MAX(Temperature), MIN(Chill), MAX(Chill), MAX(Humidity), MAX(Barometer), MIN(DewPoint), AVG(Temperature), MIN(SetPoint), MAX(SetPoint), AVG(SetPoint) FROM Temperature WHERE (DeviceRowID=" << idx << " AND Date>='" << szDateEnd << "')";
 				result = m_sql.query(szQuery.str());
 				if (result.size()>0)
 				{
@@ -14442,6 +14796,16 @@ void CWebServer::RType_HandleGraph(Json::Value &root)
 					{
 						double dp = ConvertTemperature(atof(sd[6].c_str()), tempsign);
 						root["result"][ii]["dp"] = dp;
+					}
+					if (sendSet)
+					{
+						double sm = ConvertTemperature(atof(sd[8].c_str()), tempsign);
+						double sx = ConvertTemperature(atof(sd[9].c_str()), tempsign);
+						double se = ConvertTemperature(atof(sd[10].c_str()), tempsign);
+						
+						root["result"][ii]["sm"] = sm;
+						root["result"][ii]["se"] = se;
+						root["result"][ii]["sx"] = sx;
 					}
 					ii++;
 				}

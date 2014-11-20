@@ -89,7 +89,7 @@ bool g_bRunAsDaemon = false;
 int pidFilehandle = 0;
 
 #define DAEMON_NAME "domoticz"
-#define PID_FILE "/var/run/domoticz.pid" 
+#define PID_FILE "/var/run/domoticz/domoticz.pid" 
 
 void signal_handler(int sig_num)
 {
