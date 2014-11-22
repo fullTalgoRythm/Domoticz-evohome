@@ -5610,7 +5610,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			}
 		}
 
-		if (m_mainworker.SwitchModal(idx,switchcmd,action,onlyonchange)==true)//FIXME we need to return a status of already set if ooc=="1" and no status update was performed
+		if (m_mainworker.SwitchModal(idx,switchcmd,action,onlyonchange)==true)//FIXME we need to return a status of already set / no update if ooc=="1" and no status update was performed
 		{
 			root["status"]="OK";
 			root["title"]="Modal";
@@ -7901,7 +7901,7 @@ void CWebServer::GetJSonDevices(Json::Value &root, const std::string &rused, con
 				root["result"][ii]["HaveDimmer"]=bHaveDimmer;
 				root["result"][ii]["MaxDimLevel"]=maxDimLevel;
 				root["result"][ii]["HaveGroupCmd"]=bHaveGroupCmd;
-                root["result"][ii]["SwitchType"]="evohome";
+				root["result"][ii]["SwitchType"]="evohome";
 				root["result"][ii]["SwitchTypeVal"]=switchtype; //was 0?;
 				root["result"][ii]["TypeImg"]="evohome";
 				root["result"][ii]["StrParam1"]=strParam1;
@@ -7921,7 +7921,6 @@ void CWebServer::GetJSonDevices(Json::Value &root, const std::string &rused, con
 				StringSplit(sValue, ";", strarray);
 				if (strarray.size()>=3)
 				{
-					//FIXME proper bounds check
 					int i=0;
 					root["result"][ii]["AddjValue"]=AddjValue;
 					root["result"][ii]["AddjMulti"]=AddjMulti;
@@ -7942,15 +7941,7 @@ void CWebServer::GetJSonDevices(Json::Value &root, const std::string &rused, con
 						root["result"][ii]["State"]=strarray[i++];
 				
 					std::string strstatus=strarray[i++];
-					/*if(strstatus=="Auto")//FIXME better way to convert?
-						strstatus="Normal";
-					else if(strstatus=="AutoWithEco")//FIXME better way to convert?
-						strstatus="Economy";
-					else if(strstatus=="DayOff")//FIXME better way to convert?
-						strstatus="Day Off";
-					else if(strstatus=="HeatingOff")//FIXME better way to convert?
-						strstatus="Heating Off";*/
-					root["result"][ii]["Status"]=strstatus;//FIXME maybe better to rename Status to Mode?
+					root["result"][ii]["Status"]=strstatus;
 					
 					if ((dType == pTypeEvohomeZone || dType == pTypeEvohomeWater) && strarray.size()>=4)
 					{
@@ -9301,7 +9292,7 @@ void CWebServer::RType_CreateEvohomeSensor(Json::Value &root)
 	switch (iSensorType)
 	{
 	case pTypeEvohome: //Controller
-		m_sql.UpdateValue(HwdID, ID, 1, pTypeEvohome, sTypeEvohome, 10, 255, 0, "0.0;0.0;Normal", devname);
+		m_sql.UpdateValue(HwdID, ID, 1, pTypeEvohome, sTypeEvohome, 10, 255, 0, "Normal", devname);
 		bCreated = true;
 		break;
 	case pTypeEvohomeZone:

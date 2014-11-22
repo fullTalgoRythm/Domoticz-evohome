@@ -27,7 +27,7 @@ bool CEvohome::StartHardware()
 bool CEvohome::StopHardware()
 {
 	m_bIsStarted=false;
-    return true;
+	return true;
 }
 
 void CEvohome::WriteToHardware(const char *pdata, const unsigned char length)

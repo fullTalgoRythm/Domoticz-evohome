@@ -50,7 +50,7 @@ define(['app'], function (app) {
 		//FIXME some of this functionality would be good in a shared js / class library
 		//as we might like to use it from the dashboard or in scenes at some point
 		MakePerm = function(idt){
-		$(idt).val('');return false;
+			$(idt).val('');return false;
 		}
 		
 		EditSetPoint = function(idx,name,setpoint,mode,until,callback)
@@ -67,16 +67,11 @@ define(['app'], function (app) {
 			$.devIdx=idx;
 			$("#dialog-editsetpoint #devicename").val(name);
 			$("#dialog-editsetpoint #setpoint").val(setpoint);
-			//$("#dialog-editsetpoint #until").val(until);//Date(until).toLocaleString());
-			//$("#dialog-editsetpoint #until").val(until);//Date(until).toLocaleString());
-			//$("#dialogId").parent().$(":button:contains('Authenticate')").attr("disabled","d‌​isabled").addClass( 'ui-state-disabled' );
 			if(mode.indexOf("Override")==-1)
 				$(":button:contains('Cancel Override')").attr("disabled","d‌​isabled").addClass( 'ui-state-disabled' );
 			else
 				$(":button:contains('Cancel Override')").removeAttr("disabled").removeClass( 'ui-state-disabled' );
-			$("#dialog-editsetpoint #until").datetimepicker();//{parse: 'loose',defaultDate:until});
-			//$("#dialog-editsetpoint #until").val(Date(until).toLocaleString());
-			//$("#dialog-editsetpoint #until").datetimepicker("setDate", Date(until).toLocaleString());
+			$("#dialog-editsetpoint #until").datetimepicker();
 			if(until!="")
 				$("#dialog-editsetpoint #until").datetimepicker("setDate", (new Date(until)));
 			$("#dialog-editsetpoint" ).dialog( "open" );
@@ -91,16 +86,11 @@ define(['app'], function (app) {
 			$.devIdx=idx;
 			$("#dialog-editstate #devicename").val(name);
 			$("#dialog-editstate #state").val(state);
-			//$("#dialog-editsetpoint #until").val(until);//Date(until).toLocaleString());
-			//$("#dialog-editsetpoint #until").val(until);//Date(until).toLocaleString());
-			//$("#dialogId").parent().$(":button:contains('Authenticate')").attr("disabled","d‌​isabled").addClass( 'ui-state-disabled' );
 			if(mode.indexOf("Override")==-1)
 				$(":button:contains('Cancel Override')").attr("disabled","d‌​isabled").addClass( 'ui-state-disabled' );
 			else
 				$(":button:contains('Cancel Override')").removeAttr("disabled").removeClass( 'ui-state-disabled' );
-			$("#dialog-editstate #until_state").datetimepicker();//{parse: 'loose',defaultDate:until});
-			//$("#dialog-editsetpoint #until").val(Date(until).toLocaleString());
-			//$("#dialog-editsetpoint #until").datetimepicker("setDate", Date(until).toLocaleString());
+			$("#dialog-editstate #until_state").datetimepicker();
 			if(until!="")
 				$("#dialog-editstate #until_state").datetimepicker("setDate", (new Date(until)));
 			$("#dialog-editstate" ).dialog( "open" );

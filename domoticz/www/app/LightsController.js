@@ -1264,7 +1264,7 @@ define(['app'], function (app) {
 			ShowNotify($.i18n('Setting evohome ') + ' ' + $.i18n(name));
 			
 			//FIXME avoid conflicts when setting a new status while reading the status from the web gateway at the same time
-			//(the status can flick back to the previous status after an update)
+			//(the status can flick back to the previous status after an update)...now implemented with script side lockout
 			$.ajax({
 			url: "json.htm?type=command&param=switchmodal" + 
 						"&idx=" + idx + 
@@ -1638,7 +1638,7 @@ define(['app'], function (app) {
 			 success: function(data) {
 				 
 				 
-			htmlcontent+=EvohomeAddJS();
+			  htmlcontent+=EvohomeAddJS();
 
 			  if (typeof data.result != 'undefined') {
 				bAllowWidgetReorder=data.AllowWidgetOrdering;

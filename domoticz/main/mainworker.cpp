@@ -8630,20 +8630,8 @@ bool MainWorker::SwitchModal(const std::string &idx, const std::string &status, 
 	unsigned long long ID;
 	std::stringstream s_str(idx);
 	s_str >> ID;
-	
-   /* 	std::stringstream szQuery;
-	sprintf(szTmp,
-	"UPDATE DeviceStatus SET nValue=%d, sValue='%s', LastUpdate='%04d-%02d-%02d %02d:%02d:%02d' WHERE (ID == '%s')",
-	newnValue,
-	"",
-	ltime.tm_year+1900,ltime.tm_mon+1, ltime.tm_mday, ltime.tm_hour, ltime.tm_min, ltime.tm_sec,
-	sd[0].c_str()
-	);
-	query(szTmp);
-	szQuery << "SELECT HardwareID,DeviceID,Unit,Type,SubType,SwitchType,AddjValue2 FROM DeviceStatus WHERE (ID == " << idx << ")";
-	result=m_sql.query(szQuery.str());*/
-   
-   	//Get Device details
+	   
+	//Get Device details
 	std::vector<std::vector<std::string> > result;
 	std::stringstream szQuery;
 	szQuery << "SELECT HardwareID, DeviceID,Unit,Type,SubType,SwitchType,StrParam1,nValue FROM DeviceStatus WHERE (ID == " << idx << ")";
@@ -8709,8 +8697,8 @@ bool MainWorker::SwitchModal(const std::string &idx, const std::string &status, 
 	
 	unsigned long long DeviceRowIdx=decode_evohome1(pHardware, HardwareID, (const tRBUF*)&tsen.EVOHOME1);
 	WriteMessageEnd();
-	if(DeviceRowIdx==-1)
-		return false;//FIXME is this the error code?
+	if(DeviceRowIdx==-1)//FIXME is this the error result?
+		return false;
 	m_sharedserver.SendToAll(DeviceRowIdx,(const char*)&tsen,tsen.EVOHOME1.packetlength+1,NULL);
 	return true;//FIXME detect error from SQL update
 }
@@ -8782,8 +8770,6 @@ bool MainWorker::SetSetPoint(const std::string &idx, const float TempValue, cons
 
 	if (pHardware->HwdType == HTYPE_EVOHOME)
 	{
-		//FIXME disable when we change from evohome web client to actual hardware device
-	
 		std::string OnAction(sd[6]);
 		_log.Log(LOG_STATUS,OnAction.c_str());
 		if (OnAction.find("script://")!=std::string::npos)
@@ -8879,7 +8865,6 @@ bool MainWorker::SetSetPointInt(const std::vector<std::string> &sd, const float 
 		}
 		else if (pHardware->HwdType == HTYPE_EVOHOME)
 		{
-			//FIXME disable when we change from evohome web client to actual hardware device
 			//FIXME support for override until date / time parameters...implemented above see bool MainWorker::SetSetPoint(const std::string &idx, const float TempValue, const int newMode, const std::string &until)
 		
 			std::string OnAction(sd[6]);
