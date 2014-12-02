@@ -38,6 +38,13 @@ SCRIPTNAME=/etc/init.d/$NAME
 #
 do_start()
 {
+	# Assure that /var/run/domoticz exists
+        [ -d /var/run/domoticz ] || mkdir -p /var/run/domoticz
+
+        if [ "$USERNAME" != "root" ]; then
+                chown "$USERNAME" /var/run/domoticz
+	fi
+
         # Return
         #   0 if daemon has been started
         #   1 if daemon was already running
