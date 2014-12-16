@@ -581,7 +581,7 @@ void CWebServer::Cmd_AddHardware(Json::Value &root)
 	else if (htype == HTYPE_Dummy) {
 		//all fine here!
 	}
-	else if (htype == HTYPE_EVOHOME) {
+	else if (htype == HTYPE_EVOHOME_SCRIPT || htype == HTYPE_EVOHOME_SERIAL) {
 		//all fine here!
 	}
 	else if (htype == HTYPE_PiFace) {
@@ -710,7 +710,7 @@ void CWebServer::Cmd_UpdateHardware(Json::Value &root)
 	else if (htype == HTYPE_Dummy) {
 		//All fine here
 	}
-	else if (htype == HTYPE_EVOHOME) {
+	else if (htype == HTYPE_EVOHOME_SCRIPT || htype == HTYPE_EVOHOME_SERIAL) {
 		//All fine here
 	}
 	else if (htype == HTYPE_PiFace) {
@@ -3556,7 +3556,8 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 				case HTYPE_EnOceanESP2:
 				case HTYPE_EnOceanESP3:
 				case HTYPE_Dummy:
-				case HTYPE_EVOHOME:
+				case HTYPE_EVOHOME_SCRIPT:
+				case HTYPE_EVOHOME_SERIAL:
 				case HTYPE_RaspberryGPIO:
 					root["result"][ii]["idx"]=ID;
 					root["result"][ii]["Name"]=Name;
@@ -5585,6 +5586,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 
 		std::string idx=m_pWebEm->FindValue("idx");
 		std::string switchcmd=m_pWebEm->FindValue("status");
+		std::string until=m_pWebEm->FindValue("until");//optional until date / time as applicable
 		std::string action=m_pWebEm->FindValue("action");//Run action or not (update status only)
 		std::string onlyonchange=m_pWebEm->FindValue("ooc");//No update unless the value changed (check if updated)
 		//The on action is used to call a script to update the real device so we only want to use it when altering the status in the Domoticz Web Client
@@ -5610,7 +5612,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			}
 		}
 
-		if (m_mainworker.SwitchModal(idx,switchcmd,action,onlyonchange)==true)//FIXME we need to return a status of already set / no update if ooc=="1" and no status update was performed
+		if (m_mainworker.SwitchModal(idx,switchcmd,action,onlyonchange,until)==true)//FIXME we need to return a status of already set / no update if ooc=="1" and no status update was performed
 		{
 			root["status"]="OK";
 			root["title"]="Modal";
@@ -5635,6 +5637,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 		std::string idx=m_pWebEm->FindValue("idx");
 		std::string switchcmd=m_pWebEm->FindValue("switchcmd");
 		std::string level=m_pWebEm->FindValue("level");
+		std::string onlyonchange=m_pWebEm->FindValue("ooc");//No update unless the value changed (check if updated)
 		if ((idx=="")||(switchcmd==""))
 			return;
 
@@ -5655,7 +5658,7 @@ void CWebServer::HandleCommand(const std::string &cparam, Json::Value &root)
 			}
 		}
 
-		if (m_mainworker.SwitchLight(idx,switchcmd,level,"-1")==true)
+		if (m_mainworker.SwitchLight(idx,switchcmd,level,"-1",onlyonchange)==true)
 		{
 			root["status"]="OK";
 			root["title"]="SwitchLight";
@@ -10743,6 +10746,7 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 	std::string until = m_pWebEm->FindValue("until");
 	std::string sCustomImage = m_pWebEm->FindValue("customimage");
 
+	std::string strunit = m_pWebEm->FindValue("unit");
 	std::string strParam1 = base64_decode(m_pWebEm->FindValue("strparam1"));
 	std::string strParam2 = base64_decode(m_pWebEm->FindValue("strparam2"));
 	std::string strProtected = m_pWebEm->FindValue("protected");
@@ -10830,10 +10834,13 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 			StringSplit(sd[6], ";", strarray);
 			if (strarray.size() >= 3)
 			{
-				if(dType==pTypeEvohomeWater)
-					strarray[1]=state;
-				else
-					strarray[1]=szTmp;
+				if(nEvoMode)//Let the controller update the set point when it reports the current schedule back to us
+				{
+					if(dType==pTypeEvohomeWater)
+						strarray[1]=state;
+					else
+						strarray[1]=szTmp;
+				}
 				strarray[2]=mode;
 				if(nEvoMode==2)
 				{
@@ -10900,6 +10907,13 @@ void CWebServer::RType_SetUsed(Json::Value &root)
 			m_mainworker.SetSetPoint(idx, (float)atof(setPoint.c_str()));
 	}
 	
+	if (strunit != "")
+	{
+		szQuery.clear();
+		szQuery.str("");
+		szQuery << "UPDATE DeviceStatus SET Unit=" << strunit << " WHERE (ID == " << idx << ")";
+		result = m_sql.query(szQuery.str());
+	}
 	//FIXME evohome hack we need the zone id to update the correct zone...but this should be ok as a generic call?
 	if (deviceid != "")
 	{

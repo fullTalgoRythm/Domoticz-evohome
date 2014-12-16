@@ -2,6 +2,7 @@
 #include "RFXNames.h"
 #include "RFXtrx.h"
 #include "../hardware/hardwaretypes.h"
+#include "../hardware/evohome.h"
 
 typedef struct _STR_TABLE_SINGLE {
 	unsigned long    id;
@@ -105,36 +106,6 @@ const char *Security_Status_Desc(const unsigned char status)
 	return findTableIDSingle1 (Table, status);
 }
 
-const char *Evohome_Status_Desc(const unsigned char status)
-{
-	STR_TABLE_SINGLE	Table[] = 
-	{
-		{ sStatusEvoAuto, "Normal" },
-		{ sStatusEvoAutoWithEco, "Economy" },
-		{ sStatusEvoAway, "Away" },
-		{ sStatusEvoDayOff, "Day Off" },
-		{ sStatusEvoCustom, "Custom" },
-		{ sStatusEvoHeatingOff, "Heating Off" },
-		{ 0, NULL }
-	};
-	return findTableIDSingle1 (Table, status);
-}
-
-const char *Evohome_ClientStatus_Desc(const unsigned char status) //These are status as used by evohome web client
-{
-	STR_TABLE_SINGLE	Table[] = 
-	{
-		{ sStatusEvoAuto, "Auto" },
-		{ sStatusEvoAutoWithEco, "AutoWithEco" },
-		{ sStatusEvoAway, "Away" },
-		{ sStatusEvoDayOff, "DayOff" },
-		{ sStatusEvoCustom, "Custom" },
-		{ sStatusEvoHeatingOff, "HeatingOff" },
-		{ 0, NULL }
-	};
-	return findTableIDSingle1 (Table, status);
-}
-
 const char *Timer_Type_Desc(int tType)
 {
 	STR_TABLE_SINGLE	Table[] = 
@@ -202,7 +173,8 @@ const char *Hardware_Type_Desc(int hType)
 		{ HTYPE_TOONTHERMOSTAT, "Toon Thermostat" },
 		{ HTYPE_ECODEVICES, "Eco Devices via LAN interface" },
 		{ HTYPE_HARMONY_HUB, "Logitech Harmony Hub" },
-		{ HTYPE_EVOHOME, "evohome" },
+		{ HTYPE_EVOHOME_SERIAL, "evohome - via serial for HGI/S80" },
+		{ HTYPE_EVOHOME_SCRIPT, "evohome - via script" },
 		{ 0, NULL, NULL }
 	};
 	return findTableIDSingle1 (Table, hType);
@@ -813,8 +785,8 @@ const char *RFX_Type_SubType_Values(const unsigned char dType, const unsigned ch
 		{ pTypeRFY, sTypeRFYext, "Status" },
 		
 		{ pTypeEvohome, sTypeEvohome, "Status" },
-		{ pTypeEvohomeZone, sTypeEvohomeZone, "Temperature,Set point" },
-		{ pTypeEvohomeWater, sTypeEvohomeWater, "Temperature,Set point,Status" },
+		{ pTypeEvohomeZone, sTypeEvohomeZone, "Temperature,Set point,Status" },
+		{ pTypeEvohomeWater, sTypeEvohomeWater, "Temperature,State,Status" },
 
 		{  0,0,NULL }
 	};
@@ -1388,28 +1360,7 @@ void GetLightStatus(
 		break;
 	case pTypeEvohome:
 		llevel=0;
-		/*switch (nValue)
-		{
-		case sStatusEvoAuto:
-			lstatus="Normal";
-			break;
-		case sStatusEvoAutoWithEco:
-			lstatus="Economy";
-			break;
-		case sStatusEvoAway:
-			lstatus="Away";
-			break;
-		case sStatusEvoDayOff:
-			lstatus="Day Off";
-			break;
-		case sStatusEvoCustom:
-			lstatus="Custom";
-			break;
-		case sStatusEvoHeatingOff:
-			lstatus="Heating Off";
-			break;
-		}*/
-		lstatus=Evohome_ClientStatus_Desc(nValue);
+		lstatus=CEvohome::GetWebAPIModeName(nValue);
 		break;
 	}
 }

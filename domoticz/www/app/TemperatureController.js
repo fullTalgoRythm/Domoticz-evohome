@@ -1102,14 +1102,26 @@ define(['app'], function (app) {
 					  "Set": function() {
 						  var bValid = true;
 						  bValid = bValid && checkLength( $("#dialog-editsetpoint #edittable #devicename"), 2, 100 );
+						  var setpoint=$("#dialog-editsetpoint #edittable #setpoint").val();
+						  if (setpoint<5 || setpoint>35){
+							bootbox.alert($.i18n('Set point must be between 5 and 35 degrees'));
+							return false;
+						  }
+						  var tUntil="";
+						  if($("#dialog-editsetpoint #edittable #until").val()!=""){
+							var selectedDate = $("#dialog-editsetpoint #edittable #until").datetimepicker('getDate');
+							var now = new Date();
+							if (selectedDate < now) {
+								bootbox.alert($.i18n('Temporary set point date / time must be in the future'));
+								return false;
+							}
+							tUntil=selectedDate.toISOString();
+						  }
 						  if ( bValid ) {
 							  $( this ).dialog( "close" );
-							  var aValue=$("#dialog-editsetpoint #edittable #setpoint").val();
-							  var tUntil="";
-							  if($("#dialog-editsetpoint #edittable #until").val()!="")
-								tUntil=$("#dialog-editsetpoint #edittable #until").datetimepicker('getDate').toISOString();
+							 
 							  $.ajax({
-								 url: "json.htm?type=setused&idx=" + $.devIdx + '&name=' + encodeURIComponent($("#dialog-editsetpoint #devicename").val()) + '&setpoint=' + aValue + '&mode='+((tUntil!="")?'TemporaryOverride':'PermanentOverride')+'&until='+tUntil+'&used=true',
+								 url: "json.htm?type=setused&idx=" + $.devIdx + '&name=' + encodeURIComponent($("#dialog-editsetpoint #devicename").val()) + '&setpoint=' + setpoint + '&mode='+((tUntil!="")?'TemporaryOverride':'PermanentOverride')+'&until='+tUntil+'&used=true',
 								 async: false,
 								 dataType: 'json',
 								 success: function(data) {
@@ -1126,6 +1138,8 @@ define(['app'], function (app) {
 						  if ( bValid ) {
 							  $( this ).dialog( "close" );
 							  var aValue=$("#dialog-editsetpoint #edittable #setpoint").val();
+							  if(aValue<5) aValue=5;//These values will display but the controller will update back the currently scheduled setpoint in due course
+							  if(aValue>35) aValue=35;//These values will display but the controller will update back the currently scheduled setpoint in due course
 							  $.ajax({
 								 url: "json.htm?type=setused&idx=" + $.devIdx + '&name=' + encodeURIComponent($("#dialog-editsetpoint #devicename").val()) + '&setpoint=' + aValue + '&mode=Auto&used=true',
 								 async: false,

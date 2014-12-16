@@ -1922,10 +1922,10 @@ unsigned long long CSQLHelper::UpdateValueInt(const int HardwareID, const char* 
 				std::string OnAction=sd[3];
 				std::string OffAction=sd[4];
   
-				if(devType==pTypeEvohome)
+				if(devType==pTypeEvohome)//would this be ok to extend as a general purpose feature?
 				{
 					boost::replace_all(OnAction, "{deviceid}", ID);//future expansion
-					boost::replace_all(OnAction, "{status}", Evohome_ClientStatus_Desc(nValue));
+					boost::replace_all(OnAction, "{status}", lstatus);
 					bIsLightSwitchOn=true;//Force use of OnAction for all actions
 				}
 				

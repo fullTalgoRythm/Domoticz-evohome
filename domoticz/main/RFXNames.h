@@ -90,7 +90,8 @@ enum _eHardwareTypes {
 	HTYPE_TOONTHERMOSTAT,		//34
 	HTYPE_ECODEVICES,			//35
 	HTYPE_HARMONY_HUB,			//36
-	HTYPE_EVOHOME,			//37
+	HTYPE_EVOHOME_SERIAL,			//37
+	HTYPE_EVOHOME_SCRIPT,			//38
 	HTYPE_END
 };
 
@@ -149,9 +150,6 @@ const char *Security_Status_Desc(const unsigned char status);
 const char *Notification_Type_Desc(const int nType, const unsigned char snum);
 const char *Notification_Type_Label(const int nType);
 const char *Get_Moisture_Desc(const int moisture);
-const char *Evohome_Status_Desc(const unsigned char status);
-const char *Evohome_ClientStatus_Desc(const unsigned char status); //These are status as used by evohome web client
-
 
 void GetLightStatus(
 	const unsigned char dType, 

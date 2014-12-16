@@ -43,8 +43,8 @@ public:
 	void SetWebserverPort(const std::string &Port);
 	std::string GetWebserverPort();
 
-	bool SwitchLight(const std::string &idx, const std::string &switchcmd,const std::string &level, const std::string &hue);
-	bool SwitchLight(unsigned long long idx, const std::string &switchcmd, int level, int hue);
+	bool SwitchLight(const std::string &idx, const std::string &switchcmd,const std::string &level, const std::string &hue, const std::string &ooc);
+	bool SwitchLight(unsigned long long idx, const std::string &switchcmd, int level, int hue, bool ooc=false);
 	bool SwitchLightInt(const std::vector<std::string> &sd, std::string switchcmd, int level, int hue, const bool IsTesting);
 
 	bool SwitchScene(const std::string &idx, const std::string &switchcmd);
@@ -59,7 +59,7 @@ public:
 
 	bool SetRFXCOMHardwaremodes(const int HardwareID, const unsigned char Mode1,const unsigned char Mode2,const unsigned char Mode3,const unsigned char Mode4,const unsigned char Mode5);
 	
-	bool SwitchModal(const std::string &idx, const std::string &status, const std::string &action, const std::string &ooc);
+	bool SwitchModal(const std::string &idx, const std::string &status, const std::string &action, const std::string &ooc, const std::string &until);
 
 	bool GetSunSettings();
 	void LoadSharedUsers();
@@ -211,6 +211,7 @@ private:
 	unsigned long long decode_Power(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
 	unsigned long long decode_LimitlessLights(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
 	unsigned long long decode_evohome1(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
+	unsigned long long decode_evohome2(const CDomoticzHardwareBase *pHardware, const int HwdID, const tRBUF *pResponse);
 };
 
 extern MainWorker m_mainworker;
