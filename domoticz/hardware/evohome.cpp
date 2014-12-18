@@ -1110,10 +1110,10 @@ bool CEvohome::DecodeBinding(CEvohomeMsg &msg)
 	}
 	for (int i = 0 ; i < msg.payloadsize ; i += 6) {
 		uint8_t nDevNo;
-		int16_t nCmd;
+		uint16_t nCmd;
 		CEvohomeID idDev;
 		msg.Get(nDevNo).Get(nCmd).Get(idDev);
-		Log(true,LOG_STATUS,"evohome: %s: Dev No %d: Cmd %d DeviceID 0x%04x (%s)",tag,nDevNo,nCmd,idDev.GetID(),idDev.GetStrID().c_str());
+		Log(true,LOG_STATUS,"evohome: %s: Dev No %d: Cmd 0x%04x DeviceID 0x%06x (%s)",tag,nDevNo,nCmd,idDev.GetID(),idDev.GetStrID().c_str());
 	}
 	
 	return true;
@@ -1185,7 +1185,7 @@ bool CEvohome::DecodeActuatorState(CEvohomeMsg &msg)
 	//I think the relays listen for the demand and generate a proportional on / off time for a given time slot
 	//presumably there are some settings that give it the appropriate time slots to use
 	
-	Log(true,LOG_STATUS,"evohome: %s: ID:0x%04x (%s) DevNo 0x%02x: %d", tag, msg.GetID(0), msg.GetStrID(0).c_str(), nDevNo, nDemand);
+	Log(true,LOG_STATUS,"evohome: %s: ID:0x%06x (%s) DevNo 0x%02x: %d", tag, msg.GetID(0), msg.GetStrID(0).c_str(), nDevNo, nDemand);
 	return true;
 }
 

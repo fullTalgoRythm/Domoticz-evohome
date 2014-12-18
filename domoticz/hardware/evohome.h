@@ -53,7 +53,7 @@ public:
 	static std::string GetHexTemp(int16_t nTemp)
 	{
 		char szTmp[256];
-		sprintf(szTmp,"%02x",nTemp);
+		sprintf(szTmp,"%04x",nTemp);
 		return szTmp;
 	}
 	
@@ -118,7 +118,7 @@ public:
 	static std::string GetHexID(unsigned int nID)
 	{
 		char szTmp[256];
-		sprintf(szTmp,"%04x",nID);
+		sprintf(szTmp,"%06x",nID);
 		return szTmp;
 	}
 	
